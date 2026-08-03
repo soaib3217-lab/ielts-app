@@ -366,7 +366,7 @@ export default function Admin() {
                         <p className="font-medium text-white mb-3">{i + 1}. {mcq.question}</p>
                         <div className="grid grid-cols-2 gap-2">
                           {mcq.options.map((opt, j) => (
-                            <div key={j} className={`px-3 py-2 rounded-lg text-xs font-medium ${opt === mcq.correct_answer ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-black/20 text-slate-400 border border-white/5'}`}>
+                            <div key={j} className={`px-3 py-2 rounded-lg text-xs font-medium ${j === mcq.correct_index ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-black/20 text-slate-400 border border-white/5'}`}>
                               {opt}
                             </div>
                           ))}

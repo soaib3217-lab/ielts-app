@@ -136,7 +136,7 @@ ${rawText}
   return parsedLesson;
 }
 
-export async function extractWeeklyDataWithGemini(rawText: string, apiKey: string): Promise<ParsedWeeklyPractice> {
+export async function extractWeeklyDataWithGemini(_rawText: string, apiKey: string): Promise<ParsedWeeklyPractice> {
   const genAI = new GoogleGenerativeAI(apiKey);
 
   const responseSchema = {
