@@ -60,3 +60,54 @@ WITH CHECK (true);
 CREATE POLICY "Users can update their own progress"
 ON user_progress FOR UPDATE
 USING (true);
+
+-- Table: weekly_practices
+CREATE TABLE weekly_practices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    week_number INTEGER UNIQUE NOT NULL,
+    topic_title TEXT,
+    fill_blanks_data JSONB NOT NULL DEFAULT '{}'::jsonb, -- { word_bank: string[], sentences: { text_before: string, blank: string, text_after: string, answer: string }[] }
+    synonym_data JSONB NOT NULL DEFAULT '[]'::jsonb, -- Array of { target: string, synonym: string }
+    reading_passage TEXT,
+    tfng_data JSONB NOT NULL DEFAULT '[]'::jsonb, -- Array of { id, statement, correct_answer }
+    listening_speaking_data JSONB NOT NULL DEFAULT '{}'::jsonb, -- { listening_instructions: string, speaking_prompt: string, speaking_bullet_points: string[] }
+    writing_prompt TEXT,
+    pdf_url TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Table: user_weekly_progress
+CREATE TABLE user_weekly_progress (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL,
+    weekly_practice_id UUID REFERENCES weekly_practices(id) ON DELETE CASCADE,
+    fill_blanks_score INTEGER DEFAULT 0,
+    synonyms_score INTEGER DEFAULT 0,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(user_id, weekly_practice_id)
+);
+
+-- Enable RLS for weekly practices
+ALTER TABLE weekly_practices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_weekly_progress ENABLE ROW LEVEL SECURITY;
+
+-- Policies for weekly_practices
+CREATE POLICY "Allow public read access to weekly practices" 
+ON weekly_practices FOR SELECT USING (true);
+
+CREATE POLICY "Allow anon insert to weekly practices (Prototype)" 
+ON weekly_practices FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Allow anon update to weekly practices (Prototype)" 
+ON weekly_practices FOR UPDATE USING (true);
+
+-- Policies for user_weekly_progress
+CREATE POLICY "Users can read their own weekly progress"
+ON user_weekly_progress FOR SELECT USING (true);
+
+CREATE POLICY "Users can insert their own weekly progress"
+ON user_weekly_progress FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Users can update their own weekly progress"
+ON user_weekly_progress FOR UPDATE USING (true);
+

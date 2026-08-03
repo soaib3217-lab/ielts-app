@@ -12,6 +12,25 @@ export interface ParsedLesson {
   pdf_url?: string;
 }
 
+export interface ParsedWeeklyPractice {
+  topic_title: string;
+  fill_blanks_data: {
+    word_bank: string[];
+    sentences: { text_before: string; blank: string; text_after: string; answer: string }[];
+  };
+  synonym_data: { target: string; synonym: string }[];
+  reading_passage: string;
+  tfng_data: { id: number; statement: string; correct_answer: string }[];
+  listening_speaking_data: {
+    listening_instructions: string;
+    speaking_prompt: string;
+    speaking_bullet_points: string[];
+  };
+  writing_prompt: string;
+  pdf_url?: string;
+}
+
+
 export async function extractRawTextFromPDF(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;

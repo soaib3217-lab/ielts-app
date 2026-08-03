@@ -1,5 +1,16 @@
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
-import type { ParsedLesson } from './pdfParser';
+import type { ParsedLesson, ParsedWeeklyPractice } from './pdfParser';
+
+export interface SpeakingEvaluation {
+  transcription: string;
+  fluency_and_coherence: { score: number; feedback: string };
+  lexical_resource: { score: number; feedback: string };
+  grammatical_range: { score: number; feedback: string };
+  pronunciation: { score: number; feedback: string };
+  overall_band: number;
+  key_strengths: string[];
+  areas_for_improvement: string[];
+}
 
 export async function extractDataWithGemini(rawText: string, apiKey: string): Promise<ParsedLesson> {
   const genAI = new GoogleGenerativeAI(apiKey);
@@ -123,4 +134,212 @@ ${rawText}
   });
 
   return parsedLesson;
+}
+
+export async function extractWeeklyDataWithGemini(rawText: string, apiKey: string): Promise<ParsedWeeklyPractice> {
+  const genAI = new GoogleGenerativeAI(apiKey);
+
+  const responseSchema = {
+    type: SchemaType.OBJECT,
+    properties: {
+      topic_title: { type: SchemaType.STRING, description: "The title of the weekly practice (e.g., 'Phase 1: Foundation Building | Week 2 Review')" },
+      fill_blanks_data: {
+        type: SchemaType.OBJECT,
+        properties: {
+          word_bank: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, description: "The words in the Word Bank" },
+          sentences: {
+            type: SchemaType.ARRAY,
+            items: {
+              type: SchemaType.OBJECT,
+              properties: {
+                text_before: { type: SchemaType.STRING, description: "Text before the blank" },
+                blank: { type: SchemaType.STRING, description: "The blank placeholder, e.g. '________'" },
+                text_after: { type: SchemaType.STRING, description: "Text after the blank" },
+                answer: { type: SchemaType.STRING, description: "The correct word from the word bank that fills the blank" }
+              },
+              required: ["text_before", "blank", "text_after", "answer"]
+            }
+          }
+        },
+        required: ["word_bank", "sentences"]
+      },
+      synonym_data: {
+        type: SchemaType.ARRAY,
+        items: {
+          type: SchemaType.OBJECT,
+          properties: {
+            target: { type: SchemaType.STRING, description: "Target Word" },
+            synonym: { type: SchemaType.STRING, description: "The synonym (e.g., 'Rapid increase / Spread')" }
+          },
+          required: ["target", "synonym"]
+        }
+      },
+      reading_passage: { type: SchemaType.STRING, description: "The full text of the Reading passage" },
+      tfng_data: {
+        type: SchemaType.ARRAY,
+        items: {
+          type: SchemaType.OBJECT,
+          properties: {
+            id: { type: SchemaType.INTEGER },
+            statement: { type: SchemaType.STRING },
+            correct_answer: { type: SchemaType.STRING, description: "True, False, or Not Given" }
+          },
+          required: ["id", "statement", "correct_answer"]
+        }
+      },
+      listening_speaking_data: {
+        type: SchemaType.OBJECT,
+        properties: {
+          listening_instructions: { type: SchemaType.STRING, description: "The listening task source and instructions" },
+          speaking_prompt: { type: SchemaType.STRING, description: "The main speaking prompt (e.g. Describe a historical building...)" },
+          speaking_bullet_points: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, description: "The 'You should say:' bullet points" }
+        },
+        required: ["listening_instructions", "speaking_prompt", "speaking_bullet_points"]
+      },
+      writing_prompt: { type: SchemaType.STRING, description: "The writing journal entry prompt" }
+    },
+    required: ["topic_title", "fill_blanks_data", "synonym_data", "reading_passage", "tfng_data", "listening_speaking_data", "writing_prompt"]
+  } as any;
+
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: responseSchema,
+      temperature: 0.1,
+    }
+  });
+
+  const prompt = `
+You are an expert IELTS instructor.
+You are given raw, messy text extracted from a Weekly Practice PDF. 
+Your job is to parse it perfectly into the requested JSON structure.
+
+CRITICAL INSTRUCTIONS:
+1. Extract the topic title (e.g., "Phase 1: Foundation Building | Week X Review").
+2. Fill in the Blanks: Extract the word bank. For each sentence, figure out which word fits the blank. Split the sentence into 'text_before', 'blank', and 'text_after'.
+3. Synonym Matching: Match the Target Word with its correct synonym based on the text.
+4. Active Reading: Extract the reading passage and the True/False/Not Given questions. Figure out the correct answers from the text.
+5. Listening & Speaking: Extract the listening instructions, speaking prompt, and bullet points.
+6. Writing: Extract the writing journal prompt.
+
+Raw Text from PDF:
+---
+\${rawText}
+---
+`;
+
+  const result = await model.generateContent(prompt);
+  const responseText = result.response.text();
+  
+  if (!responseText) {
+    throw new Error("Failed to generate response from Gemini");
+  }
+
+  const parsedWeekly: ParsedWeeklyPractice = JSON.parse(responseText);
+  return parsedWeekly;
+}
+
+export async function evaluateSpeakingPractice(
+  audioBase64: string,
+  mimeType: string,
+  promptText: string,
+  bulletPoints: string[],
+  apiKey: string
+): Promise<SpeakingEvaluation> {
+  const genAI = new GoogleGenerativeAI(apiKey);
+
+  const responseSchema = {
+    type: SchemaType.OBJECT,
+    properties: {
+      transcription: { type: SchemaType.STRING, description: "The exact transcript of what the user said in the audio." },
+      fluency_and_coherence: {
+        type: SchemaType.OBJECT,
+        properties: {
+          score: { type: SchemaType.NUMBER, description: "IELTS band score (0-9)" },
+          feedback: { type: SchemaType.STRING, description: "Detailed feedback on fluency, flow, and coherence." }
+        },
+        required: ["score", "feedback"]
+      },
+      lexical_resource: {
+        type: SchemaType.OBJECT,
+        properties: {
+          score: { type: SchemaType.NUMBER, description: "IELTS band score (0-9)" },
+          feedback: { type: SchemaType.STRING, description: "Detailed feedback on vocabulary usage, collocations, and range." }
+        },
+        required: ["score", "feedback"]
+      },
+      grammatical_range: {
+        type: SchemaType.OBJECT,
+        properties: {
+          score: { type: SchemaType.NUMBER, description: "IELTS band score (0-9)" },
+          feedback: { type: SchemaType.STRING, description: "Detailed feedback on grammatical accuracy and variety of sentence structures." }
+        },
+        required: ["score", "feedback"]
+      },
+      pronunciation: {
+        type: SchemaType.OBJECT,
+        properties: {
+          score: { type: SchemaType.NUMBER, description: "IELTS band score (0-9)" },
+          feedback: { type: SchemaType.STRING, description: "Detailed feedback on pronunciation, intonation, and clarity." }
+        },
+        required: ["score", "feedback"]
+      },
+      overall_band: { type: SchemaType.NUMBER, description: "The overall average IELTS speaking band score (0-9)." },
+      key_strengths: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, description: "2-3 short bullet points on what they did well." },
+      areas_for_improvement: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING }, description: "2-3 short bullet points on what they should improve." }
+    },
+    required: [
+      "transcription",
+      "fluency_and_coherence",
+      "lexical_resource",
+      "grammatical_range",
+      "pronunciation",
+      "overall_band",
+      "key_strengths",
+      "areas_for_improvement"
+    ]
+  } as any;
+
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: responseSchema,
+      temperature: 0.2,
+    }
+  });
+
+  const prompt = `
+You are an expert IELTS Speaking Examiner. 
+Listen to the provided audio recording of a student responding to the following speaking prompt:
+
+PROMPT:
+"${promptText}"
+They were asked to cover these points:
+${bulletPoints.map(b => "- " + b).join("\n")}
+
+Evaluate the student's performance strictly according to the official IELTS speaking band descriptors.
+Identify their exact words to generate a transcription, then grade their Fluency and Coherence, Lexical Resource, Grammatical Range and Accuracy, and Pronunciation.
+Provide constructive, direct, and actionable feedback.
+  `;
+
+  // Provide the base64 audio in inlineData format for Gemini API
+  const result = await model.generateContent([
+    { text: prompt },
+    {
+      inlineData: {
+        data: audioBase64,
+        mimeType: mimeType
+      }
+    }
+  ]);
+
+  const responseText = result.response.text();
+  if (!responseText) {
+    throw new Error("Failed to evaluate speaking practice.");
+  }
+
+  const evaluation: SpeakingEvaluation = JSON.parse(responseText);
+  return evaluation;
 }
